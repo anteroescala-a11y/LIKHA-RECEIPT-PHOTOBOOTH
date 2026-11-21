@@ -1,7 +1,7 @@
 {
-  "name": "Receipt Photobooth",
-  "short_name": "Photobooth",
-  "description": "Photobooth kiosk that prints photo strips on a thermal receipt printer.",
+  "name": "AI Bots Agency Photobooth",
+  "short_name": "AI Bots Booth",
+  "description": "AI Bots Agency photobooth kiosk that prints agent IDs, bot invoices and boot-log photo strips on a thermal receipt printer.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",
