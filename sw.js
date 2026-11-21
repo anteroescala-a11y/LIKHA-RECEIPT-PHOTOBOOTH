@@ -1,9 +1,9 @@
 /* Offline support: network first so updates arrive, cache as the fallback when the tablet is offline. */
-const CACHE = 'rpb-v5';
+const CACHE = 'rpb-v6';
 const SHELL = [
   './', 'index.html', 'css/style.css',
   'js/imaging.js', 'js/compose.js', 'js/escpos.js', 'js/qr.js', 'js/share.js', 'js/app.js',
-  'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'media/splash.mp4',
+  'bots.html', 'css/bots.css', 'js/bots.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'media/splash.mp4',
 ];
 
 self.addEventListener('install', (e) => {
