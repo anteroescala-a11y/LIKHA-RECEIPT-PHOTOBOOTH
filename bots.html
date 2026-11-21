@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#131316">
+<title>Booth Bots</title>
+<link rel="icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/bots.css">
+</head>
+<body>
+<header class="top">
+  <span class="bot sm" style="--c:#3ecf8e"><b>&#728; &#728;</b></span>
+  <h1>Booth <span>Bots</span></h1>
+  <span class="grow"></span>
+  <a href="index.html">Open the photobooth &rarr;</a>
+</header>
+
+<main class="wrap">
+  <section class="board">
+    <div class="b-head">
+      <span class="bot sm" style="--c:#3ecf8e"><b>&#728; &#728;</b></span>
+      <strong id="bizName">AI Bots Agency</strong>
+      <span class="hint">click a bot to open its panel</span>
+      <span class="tz" id="clock"></span>
+      <button class="btn go" id="runAll">&#9654; Run all bots</button>
+    </div>
+
+    <div class="canvas">
+      <div class="chrome"><i></i><i></i><i></i><span>Business canvas</span></div>
+      <div class="nodes">
+        <button class="node to-r" data-bot="inquiry" aria-pressed="false">
+          <span class="bot" style="--c:#5b8def"><b>&bull; &bull;</b></span>
+          <span class="ico">&#128172;</span>
+          <span><strong class="nt">Inquiry Bot</strong><span class="np">Reads messages, drafts replies</span><span class="tags" id="tag-inquiry"></span></span>
+        </button>
+        <button class="node to-r" data-bot="booking" aria-pressed="false">
+          <span class="bot" style="--c:#ef5d7a"><b>&#9702; &#9702;</b></span>
+          <span class="ico">&#128221;</span>
+          <span><strong class="nt">Booking Bot</strong><span class="np">Books events, quotes prices</span><span class="tags" id="tag-booking"></span></span>
+        </button>
+        <button class="node to-d" data-bot="scheduler" aria-pressed="false">
+          <span class="bot" style="--c:#9b7bf0"><b>^ ^</b></span>
+          <span class="ico">&#128197;</span>
+          <span><strong class="nt">Scheduler Bot</strong><span class="np">Watches the calendar</span><span class="tags" id="tag-scheduler"></span></span>
+        </button>
+        <button class="node to-r" data-bot="followup" aria-pressed="false">
+          <span class="bot" style="--c:#b88a5a"><b>&bull; &bull;</b></span>
+          <span class="ico">&#128276;</span>
+          <span><strong class="nt">Follow-up Bot</strong><span class="np">Deposits, reminders, thank-yous</span><span class="tags" id="tag-followup"></span></span>
+        </button>
+        <button class="node to-r" data-bot="marketing" aria-pressed="false">
+          <span class="bot" style="--c:#e8b04a"><b>&bull; &bull;</b></span>
+          <span class="ico">&#128227;</span>
+          <span><strong class="nt">Marketing Bot</strong><span class="np">Writes and plans your posts</span><span class="tags" id="tag-marketing"></span></span>
+        </button>
+        <button class="node" data-bot="manager" aria-pressed="false">
+          <span class="bot" style="--c:#3ecf8e"><b>&#728; &#728;</b></span>
+          <span class="ico">&#129517;</span>
+          <span><strong class="nt">Bot Manager</strong><span class="np">Checks, numbers, settings</span><span class="tags" id="tag-manager"></span></span>
+        </button>
+      </div>
+    </div>
+
+    <div id="panel"></div>
+
+    <div class="log">
+      <h4>Bot log <small>live updates</small></h4>
+      <ol id="log"></ol>
+    </div>
+
+    <div class="status">
+      <span class="bot" style="--c:#3ecf8e;width:52px;height:42px"><b>&#728; &#728;</b></span>
+      <div><strong>Bot Manager</strong> <small>Manager</small><p id="statusText">Starting up…</p></div>
+      <span class="dot" id="statusDot"><i></i> <span>Online</span></span>
+    </div>
+  </section>
+</main>
+
+<div id="toast" role="status" hidden></div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+<script src="js/bots.js"></script>
+</body>
+</html>

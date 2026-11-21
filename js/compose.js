@@ -13,6 +13,10 @@
 
   // What guests pick from: a photo layout plus a receipt theme.
   const TEMPLATES = {
+    agentId: { label: 'Agent ID Badge', poses: 1, layout: 'single', theme: 'agent' },
+    botInvoice: { label: 'Bot Invoice', poses: 3, layout: 'strip3', theme: 'invoice' },
+    bootLog: { label: 'Boot Log', poses: 4, layout: 'grid4', theme: 'terminal' },
+    squad: { label: 'Bot Squad', poses: 4, layout: 'strip4', theme: 'agent' },
     classic1: { label: 'Classic Receipt', poses: 1, layout: 'single', theme: 'classic' },
     boarding: { label: 'Boarding Pass', poses: 2, layout: 'duo', theme: 'boarding' },
     classic3: { label: 'Classic Strip', poses: 3, layout: 'strip3', theme: 'classic' },
@@ -189,6 +193,49 @@
     wow: bubble('WOW!'),
     lol: bubble('LOL'),
     yay: bubble('YAY!'),
+    robot: (ctx) => {
+      // antenna
+      ctx.beginPath();
+      ctx.moveTo(0, -0.3); ctx.lineTo(0, -0.42);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.12; ctx.lineCap = 'round'; ctx.stroke();
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 0.05; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, -0.44, 0.06, 0, Math.PI * 2); ink(ctx);
+      // ears
+      rrect(ctx, -0.48, -0.08, 0.1, 0.22, 0.03); ink(ctx);
+      rrect(ctx, 0.38, -0.08, 0.1, 0.22, 0.03); ink(ctx);
+      // head
+      rrect(ctx, -0.38, -0.3, 0.76, 0.6, 0.12); ink(ctx);
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(-0.16, -0.05, 0.09, 0, Math.PI * 2); ctx.arc(0.16, -0.05, 0.09, 0, Math.PI * 2); ctx.fill();
+      ctx.fillRect(-0.18, 0.13, 0.36, 0.06);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(-0.06, 0.13, 0.03, 0.06); ctx.fillRect(0.03, 0.13, 0.03, 0.06);
+    },
+    visor: (ctx) => {
+      rrect(ctx, -0.5, -0.16, 1, 0.32, 0.16); ink(ctx);
+      ctx.fillStyle = '#fff';
+      for (let i = -3; i <= 3; i++) ctx.fillRect(i * 0.11 - 0.035, -0.02, 0.07, 0.04);
+    },
+    chip: (ctx) => {
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.1; ctx.lineCap = 'butt';
+      ctx.beginPath();
+      for (let i = -2; i <= 2; i++) {
+        const t = i * 0.12;
+        ctx.moveTo(t, -0.48); ctx.lineTo(t, 0.48);
+        ctx.moveTo(-0.48, t); ctx.lineTo(0.48, t);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 0.05; ctx.stroke();
+      rrect(ctx, -0.32, -0.32, 0.64, 0.64, 0.06); ink(ctx);
+      ctx.save(); ctx.scale(0.01, 0.01);
+      ctx.fillStyle = '#fff'; ctx.font = '400 30px "Archivo Black", "Arial Black", sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('AI', 0, 2);
+      ctx.restore();
+    },
+    bolt: (ctx) => { poly(ctx, [[0.12, -0.48], [-0.3, 0.06], [-0.02, 0.06], [-0.12, 0.48], [0.3, -0.08], [0.02, -0.08]]); ink(ctx); },
+    beep: bubble('BEEP!'),
+    hello: bubble('HI HUMAN'),
+    ai: bubble('100% AI'),
   };
 
   /* decor: { stickers: [{type,x,y,size,rot}], strokes: [{pts:[[x,y]],w,white}] }
@@ -341,7 +388,7 @@
     const gap = Math.round(W * 0.03);
     const P = {
       ctx, W, m, gap, s, inner: W - 2 * m, body: Math.round(W * 0.05), y: m,
-      order: info.order, dateStr: info.dateStr, dateOnly: info.dateOnly, count: info.count, showDate: info.showDate,
+      orderNo: info.orderNo || 1, order: info.order, dateStr: info.dateStr, dateOnly: info.dateOnly, count: info.count, showDate: info.showDate,
 
       rule() {
         P.y += gap;
@@ -519,6 +566,134 @@
       },
     },
   };
+
+  /* ---------- AI Bots Agency themes ----------
+     Each guest gets a made-up agent persona, fixed per order number so reprints match. */
+  const BOT_NAMES = ['NOVA', 'PIXEL', 'ECHO', 'BOLT', 'ORBIT', 'SPARK', 'CIPHER', 'NEON', 'QUBIT', 'VECTOR', 'HALO', 'GLITCH', 'TURBO', 'ZENITH', 'BYTE', 'COMET'];
+  const BOT_ROLES = ['CHIEF SMILE OFFICER', 'POSE ENGINEER', 'VIBE ANALYST', 'SELFIE ARCHITECT', 'JOY OPTIMIZER', 'FUN DEPLOYER', 'GRIN STRATEGIST', 'MEMORY CURATOR'];
+  const BOT_MODELS = ['SMILE-7B', 'POSE-X 2.0', 'GRIN-LM 13B', 'JOY-NET 4', 'VIBE-3 TURBO', 'FLASH-1 MINI'];
+  function persona(no) {
+    let seed = (((no || 1) + 7) * 2654435761) >>> 0;
+    const pick = (arr) => { seed = (seed * 1664525 + 1013904223) >>> 0; return arr[seed % arr.length]; };
+    return { name: pick(BOT_NAMES), role: pick(BOT_ROLES), model: pick(BOT_MODELS), level: 1 + (seed % 9) };
+  }
+
+  Object.assign(THEMES, {
+    agent: {
+      header(P) {
+        const p = persona(P.orderNo);
+        P.band('AI BOTS AGENCY');
+        P.y += P.gap;
+        P.center('OFFICIAL AGENT CREDENTIALS', 700, Math.round(P.body * 0.8));
+        P.y += Math.round(P.gap / 2);
+        P.title(0.14);
+        if (P.s.subtitle) P.center(P.s.subtitle, 400, Math.round(P.W * 0.045));
+        P.rule();
+        P.cols([['AGENT', p.name], ['UNIT', 'BOT-' + P.order.slice(1)]]);
+        P.cols([['MODEL', p.model], ['CLEARANCE', 'LVL ' + p.level]]);
+        P.y += Math.round(P.gap / 2);
+      },
+      footer(P) {
+        const p = persona(P.orderNo);
+        P.y += P.gap;
+        P.cols([['ROLE', p.role]]);
+        P.pair('STATUS', 'DEPLOYED', true);
+        P.pair('HUMANS', P.count > 1 ? P.count + ' VERIFIED' : 'VERIFIED');
+        if (P.showDate) P.pair('ACTIVATED', P.dateOnly);
+        P.rule();
+        P.center('THIS AGENT RUNS ON GOOD VIBES', 700, Math.round(P.body * 0.8));
+        P.y += Math.round(P.gap / 2);
+        P.footerText();
+        P.barcode();
+      },
+    },
+
+    invoice: {
+      header(P) {
+        const s = P.s;
+        P.title(0.14);
+        if (s.subtitle) P.center(s.subtitle, 400, Math.round(P.W * 0.045));
+        P.y += Math.round(P.gap / 2);
+        P.band('BOT INVOICE');
+        P.y += P.gap;
+        P.pair('INVOICE', 'AI-' + P.order.slice(1));
+        if (P.showDate) P.pair('DATE', P.dateStr);
+        P.pair('CLIENT', 'YOU, A HUMAN');
+        P.y += Math.round(P.gap / 2);
+      },
+      footer(P) {
+        P.rule();
+        P.pair('QTY ITEM', 'AMOUNT', true);
+        P.pair(`${P.count} PHOTO RENDERS`, 'FREE');
+        P.pair('1 PROMPT: "SMILE"', '0.00');
+        P.pair('GPU HOURS', '0.00');
+        P.pair('HALLUCINATIONS', '0');
+        P.pair('GOOD VIBES', '+100%');
+        P.rule();
+        P.pair('TOTAL', 'PRICELESS', true);
+        P.pair('PAID WITH', 'SMILES');
+        P.y += P.gap;
+        P.center('NO HUMANS WERE REPLACED', 700, Math.round(P.body * 0.8));
+        P.center('IN THE MAKING OF THIS PHOTO', 400, Math.round(P.body * 0.8));
+        P.y += Math.round(P.gap / 2);
+        P.footerText();
+        P.barcode();
+      },
+    },
+
+    terminal: {
+      header(P) {
+        const ctx = P.ctx;
+        const size = Math.round(P.body * 0.85);
+        const lh = Math.round(size * 1.45);
+        const line = (left, right) => {
+          ctx.font = `400 ${size}px ${MONO}`;
+          ctx.textAlign = 'left';
+          ctx.fillText(left, P.m, P.y);
+          if (right) {
+            ctx.font = `700 ${size}px ${MONO}`;
+            ctx.textAlign = 'right';
+            ctx.fillText(right, P.W - P.m, P.y);
+          }
+          P.y += lh;
+        };
+        P.title(0.13);
+        if (P.s.subtitle) P.center(P.s.subtitle.toUpperCase(), 700, Math.round(P.body * 0.85));
+        P.rule();
+        line('> boot agent ' + persona(P.orderNo).name.toLowerCase());
+        line('> load personality', '[ OK ]');
+        line('> calibrate smile', '[ OK ]');
+        line('> scan humans: ' + P.count, '[ OK ]');
+        line('> capture memories');
+        P.y += Math.round(P.gap / 2);
+      },
+      footer(P) {
+        const ctx = P.ctx;
+        const size = Math.round(P.body * 0.85);
+        P.y += P.gap;
+        ctx.font = `400 ${size}px ${MONO}`;
+        ctx.textAlign = 'left';
+        ctx.fillText('> render receipt', P.m, P.y);
+        ctx.font = `700 ${size}px ${MONO}`;
+        ctx.textAlign = 'right';
+        ctx.fillText('[DONE]', P.W - P.m, P.y);
+        P.y += Math.round(size * 1.45);
+        // progress bar
+        const h = Math.round(size * 0.9);
+        ctx.lineWidth = 2;
+        ctx.strokeRect(P.m + 1, P.y + 1, P.inner - 2, h);
+        ctx.fillRect(P.m + 4, P.y + 4, P.inner - 8, h - 6);
+        P.y += h + Math.round(size * 0.5);
+        P.center('100% · ' + (P.showDate ? P.dateStr : 'NOW'), 400, size);
+        P.rule();
+        P.center('SESSION ' + P.order + ' TERMINATED', 700, size);
+        P.center('HUMANS HAD FUN. :)', 400, size);
+        P.y += Math.round(P.gap / 2);
+        P.footerText();
+        P.barcode();
+      },
+    },
+  });
 
   /* opts: { paperWidth, layout, theme, photos: [canvas|img], s: settings, orderNo, date }
      returns { canvas, rects: [{x,y,w,h}] } */
@@ -767,5 +942,5 @@
   }
 
   RPB.compose = { LAYOUTS, TEMPLATES, TITLE_FONTS, dotsFor, loadFonts, build, drawPhoto, voucherSlip, toBitmap,
-    STICKERS, drawDecor, detectSlots, padBitmap, calibrationPage, paint, placeholder, testPhoto };
+    STICKERS, persona, drawDecor, detectSlots, padBitmap, calibrationPage, paint, placeholder, testPhoto };
 })();

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#f4f1e8">
-<title>Receipt Photobooth</title>
+<title>AI Bots Agency Photobooth</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="mobile-web-app-capable" content="yes">
@@ -24,16 +24,73 @@
   <section class="screen active" data-screen="welcome" id="welcomeScreen">
     <div class="welcome-media" id="welcomeMedia" hidden></div>
     <div class="welcome">
-      <p class="eyebrow">WELCOME</p>
+      <!-- Bot canvas welcome (Booth look: AI bots). Each step of the booth is a bot. -->
+      <div class="botboard" id="botBoard" aria-label="Booth bots">
+        <div class="bb-head">
+          <span class="bot sm" style="--c:#3ecf8e"><b>&#728; &#728;</b></span>
+          <strong id="bbTitle">AI BOTS AGENCY</strong>
+          <span class="bb-hint">tap anywhere to start your session</span>
+          <span class="bb-tz" id="bbClock"></span>
+          <span class="bb-go">&#9654; Start session</span>
+        </div>
+        <div class="bb-canvas">
+          <div class="bb-chrome"><i></i><i></i><i></i><span>Photobooth canvas</span></div>
+          <div class="bb-grid">
+            <div class="bb-node to-r" data-bot="0">
+              <span class="bot" style="--c:#5b8def"><b>&bull; &bull;</b></span>
+              <span class="bb-ico">&#128248;</span>
+              <div><h4>Camera Bot</h4><p>Strikes the pose</p>
+                <div class="bb-tags"><span id="bbCount">3-2-1</span><span>flash</span><span>retake</span></div></div>
+            </div>
+            <div class="bb-node to-r" data-bot="1">
+              <span class="bot" style="--c:#9b7bf0"><b>^ ^</b></span>
+              <span class="bb-ico">&#127912;</span>
+              <div><h4>Filter Bot</h4><p>Picks your look</p><small>Mono · Noir · Bright</small></div>
+            </div>
+            <div class="bb-node to-d" data-bot="2">
+              <span class="bot" style="--c:#e8b04a"><b>&bull; &bull;</b></span>
+              <span class="bb-ico">&#128444;</span>
+              <div><h4>Frame Bot</h4><p>Lays out your receipt</p>
+                <div class="bb-tags" id="bbFrames"></div></div>
+            </div>
+            <div class="bb-node to-r" data-bot="5">
+              <span class="bot" style="--c:#39b7c9"><b>&#728; &#728;</b></span>
+              <span class="bb-ico">&#128242;</span>
+              <div><h4>Share Bot</h4><p>Sends it to your phone</p><small>QR code · email</small></div>
+            </div>
+            <div class="bb-node to-r hero" data-bot="4">
+              <span class="bot" style="--c:#ef5d7a"><b>&#9702; &#9702;</b></span>
+              <span class="bb-ico">&#129534;</span>
+              <div><h4>Print Bot</h4><p>Prints your receipt</p>
+                <div class="bb-tags"><span>Agent ID</span><span>Invoice</span><span>Boot log</span></div></div>
+            </div>
+            <div class="bb-node" data-bot="3">
+              <span class="bot" style="--c:#b88a5a"><b>&bull; &bull;</b></span>
+              <span class="bb-ico">&#11088;</span>
+              <div><h4>Sticker Bot</h4><p>Adds robots &amp; beeps</p></div>
+            </div>
+          </div>
+        </div>
+        <div class="bb-log">
+          <h4>Bot log <small>live updates</small></h4>
+          <ol id="bbLog" aria-live="off"></ol>
+        </div>
+        <div class="bb-status">
+          <span class="bot md" style="--c:#3ecf8e"><b>&#728; &#728;</b></span>
+          <div><strong>Bot Manager</strong> <small>Manager</small><p id="bbStatus">Ready for the next human</p></div>
+          <span class="bb-done"><i></i> Online</span>
+        </div>
+      </div>
+      <p class="eyebrow">WELCOME, HUMAN</p>
       <div class="printer run" id="welcomePrinter">
-        <div class="slot"><i class="grill"></i><span>PHOTOBOOTH</span><i class="led"></i></div>
+        <div class="slot"><i class="grill"></i><span>AI BOTS AGENCY</span><i class="led"></i></div>
         <!-- Sample photo strip: prints out of the slot, is cut, falls away, and a new one prints. -->
         <div class="ticket-window">
           <div class="ticket-mover" id="ticketMover">
           <div class="ticket" id="ticket">
             <img id="welcomeLogo" class="t-logo" alt="" hidden>
-            <h1 id="welcomeTitle">PHOTOBOOTH</h1>
-            <p class="t-tag" id="welcomeSub">POSE · PRINT · SMILE</p>
+            <h1 id="welcomeTitle">AI BOTS AGENCY</h1>
+            <p class="t-tag" id="welcomeSub">HUMANS + BOTS, ONE PHOTO</p>
             <hr>
             <p class="t-row"><span>NO. <span id="welcomeNo">000001</span></span><span>TODAY</span></p>
             <div class="t-strip" aria-hidden="true">
@@ -64,9 +121,9 @@
             </div>
             <p class="t-head" id="welcomeHead">Smile now,<br><mark>print</mark> right after.</p>
             <hr>
-            <p class="t-total"><span>TOTAL</span><strong>MEMORIES</strong></p>
+            <p class="t-total"><span>STATUS</span><strong>DEPLOYED</strong></p>
             <div class="barcode"></div>
-            <p class="t-thanks">THANK YOU</p>
+            <p class="t-thanks">BEEP BOOP · THANK YOU</p>
           </div>
           </div>
         </div>
@@ -386,6 +443,12 @@
 
         <fieldset data-tab="design">
           <legend>Receipt</legend>
+          <label>Booth look
+            <select data-k="look">
+              <option value="bots">AI bots canvas (dark)</option>
+              <option value="ticket">Receipt printer (light)</option>
+            </select>
+          </label>
           <label>Title <input type="text" maxlength="24" data-k="title"></label>
           <label>Title font <select data-k="titleFont" id="fontSel"></select></label>
           <label>Subtitle <input type="text" maxlength="40" data-k="subtitle"></label>
@@ -466,6 +529,7 @@
           <label class="check"><input type="checkbox" data-k="voucherPrint"> Print vouchers sent from my phone</label>
           <label class="check"><input type="checkbox" data-k="requireVoucher"> Require a voucher code (or staff PIN) to start a session</label>
           <p class="hint" id="adminLink"></p>
+          <p class="hint">Bookings, inquiries and marketing posts are handled by the <a href="bots.html" style="color:inherit;font-weight:700">Booth Bots console</a>.</p>
         </fieldset>
 
         <fieldset data-tab="kiosk">

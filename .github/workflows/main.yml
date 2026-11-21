@@ -26,7 +26,7 @@ jobs:
       - name: Copy the web app and icon into the Android project
         run: |
           mkdir -p android/app/src/main/assets/www
-          cp -r index.html css js icons manifest.webmanifest android/app/src/main/assets/www/
+          cp -r index.html bots.html css js icons manifest.webmanifest android/app/src/main/assets/www/
           if [ -d media ]; then cp -r media android/app/src/main/assets/www/; else echo "No media folder: the opening animation will be skipped."; fi
           mkdir -p android/app/src/main/res/mipmap-xxxhdpi
           cp icons/icon-192.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
