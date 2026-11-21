@@ -20,7 +20,7 @@
     shareOn: false, shareUrl: '', shareKey: '', eventCode: '', galleryOn: false,
     voucherPrint: false, requireVoucher: false,
     paperCheck: true, printScale: 100, printShift: 0,
-    welcomeFit: 'cover', welcomeCta: true, hideBuiltinStickers: false, printAnim: true, splash: true,
+    look: 'bots', welcomeFit: 'cover', welcomeCta: true, hideBuiltinStickers: false, printAnim: true, splash: true,
     tplPinned: [], tplHidden: [],
   };
   const freshDefaults = () => JSON.parse(JSON.stringify(DEFAULTS));
@@ -335,12 +335,73 @@
     await loadWelcome();
   }
 
+  /* ---------- bot canvas welcome: each booth step is a bot, with a live log ---------- */
+  const BOT_NAMES = ['Camera Bot', 'Filter Bot', 'Frame Bot', 'Sticker Bot', 'Print Bot', 'Share Bot', 'Bot Manager'];
+  const BOT_COLORS = ['#5b8def', '#9b7bf0', '#e8b04a', '#b88a5a', '#ef5d7a', '#39b7c9', '#3ecf8e'];
+  const BOT_FACES = ['• •', '^ ^', '• •', '• •', '◦ ◦', '˘ ˘', '˘ ˘'];
+  const board = { step: 0, timer: 0 };
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function botLines() {
+    const tpls = allTemplates(false);
+    const next = $('#welcomeNo').textContent;
+    const r = Number(S.retakeLimit) || 0;
+    return [
+      `Lens warmed up. ${S.countdown}-second countdown, ${r} retake${r === 1 ? '' : 's'} per session.`,
+      'Looks loaded. Mono, noir and bright, all tuned for thermal paper.',
+      `${tpls.length} frames ready: ${tpls.slice(0, 3).map((t) => t.label).join(', ')}…`,
+      'Robots, AI chips and BEEP! bubbles stocked.',
+      `${S.paperWidth} mm paper loaded. Receipt #${next} prints next.`,
+      shareReady() ? 'QR codes ready to send photos to phones.' : 'Standing by. Your colour copy can be saved here.',
+      'All checks passed. Ready for the next human.',
+    ];
+  }
+  function logBot(i, text) {
+    const ol = $('#bbLog');
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="bot sm" style="--c:${BOT_COLORS[i]}"><b>${BOT_FACES[i]}</b></span><div><strong>${BOT_NAMES[i]}</strong><p>${esc(text)}</p></div>`;
+    ol.prepend(li);
+    while (ol.children.length > 4) ol.removeChild(ol.lastElementChild);
+  }
+  /* One tick: the next bot lights up and reports in; after the last, the manager signs off. */
+  function boardTick() {
+    if (S.look === 'ticket' || state.screen !== 'welcome' || document.hidden) return;
+    const i = board.step % 7;
+    $$('.bb-node').forEach((n) => n.classList.toggle('busy', Number(n.dataset.bot) === i));
+    logBot(i, botLines()[i]);
+    $('#bbStatus').textContent = i === 6 ? 'Ready for the next human' : `${BOT_NAMES[i]} is checking in…`;
+    board.step++;
+  }
+  function boardClock() {
+    const el = $('#bbClock');
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+      el.textContent = `${tz} · ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    } catch (e) { el.textContent = ''; }
+  }
+  function applyLook() {
+    const bots = S.look !== 'ticket';
+    document.body.classList.toggle('look-bots', bots);
+    $('meta[name="theme-color"]').setAttribute('content', bots ? '#131316' : '#f4f1e8');
+    $('#bbTitle').textContent = S.title || 'AI BOTS AGENCY';
+    $('#bbCount').textContent = `${S.countdown}s countdown`;
+    $('#bbFrames').innerHTML = allTemplates(false).slice(0, 3).map((t) => `<span>${esc(t.label)}</span>`).join('');
+    boardClock();
+    if (bots && !board.timer) {
+      boardTick();
+      board.timer = setInterval(() => { boardTick(); boardClock(); }, 2600);
+    } else if (!bots && board.timer) {
+      clearInterval(board.timer);
+      board.timer = 0;
+    }
+  }
+
   function applyBranding() {
     $('#welcomeTitle').textContent = S.title || 'PHOTOBOOTH';
     $('#welcomeSub').textContent = (S.subtitle || 'Pose · Print · Smile').toUpperCase();
     let n = 0;
     try { n = parseInt(localStorage.getItem('rpb.order'), 10) || 0; } catch (e) { /* ignore */ }
     $('#welcomeNo').textContent = String(n + 1).padStart(6, '0');
+    applyLook();
   }
 
   function readDataUrl(file) {

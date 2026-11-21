@@ -1,5 +1,5 @@
 /* Offline support: network first so updates arrive, cache as the fallback when the tablet is offline. */
-const CACHE = 'rpb-v4';
+const CACHE = 'rpb-v5';
 const SHELL = [
   './', 'index.html', 'css/style.css',
   'js/imaging.js', 'js/compose.js', 'js/escpos.js', 'js/qr.js', 'js/share.js', 'js/app.js',
