@@ -10,6 +10,7 @@
     business: 'AI Bots Agency', city: 'Manila', currency: '₱', deposit: 30, extraHour: 2000, travelFee: 1500,
     perDay: 1, lang: 'en', slots: '12:00, 18:00, 20:00', page: '',
     hashtags: '#photobooth #receiptphotobooth #AIphotobooth #eventsph',
+    syncUrl: '', syncKey: '', autoSync: true,
     packages: [
       { id: 'basic', name: 'Bot Starter', hours: 2, price: 6000, includes: 'unlimited receipt prints, 2 frame designs, digital copies via QR' },
       { id: 'standard', name: 'Agent Pro', hours: 3, price: 8500, includes: 'unlimited receipt prints, custom event frame, robot props, digital copies via QR' },
@@ -27,13 +28,19 @@
     d.posts = Array.isArray(d.posts) ? d.posts : [];
     d.acks = Array.isArray(d.acks) ? d.acks : [];
     d.log = Array.isArray(d.log) ? d.log : [];
+    d.deleted = Array.isArray(d.deleted) ? d.deleted : [];
+    d.sync = d.sync || {};
+    d.bookings.forEach((b) => { if (!b.updated) b.updated = b.created || 1; });
     return d;
   }
   let D = load();
   const S = () => D.settings;
   function save() {
     try { localStorage.setItem(STORE, JSON.stringify(D)); } catch (e) { toast('Could not save on this device.'); }
+    if (typeof scheduleSync === 'function') scheduleSync();
   }
+  /* Marks a booking as changed now, so the newer copy wins when syncing with the sheet. */
+  const touch = (b) => { b.updated = Date.now(); return b; };
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   /* ---------- helpers ---------- */
@@ -355,6 +362,90 @@
     return { date: today(), time: sl[0] };
   }
 
+  /* ---------- Google Sheet sync (server/Code.gs, action bookingsSync) ---------- */
+  function syncCfg() {
+    let url = S().syncUrl, key = S().syncKey;
+    if (!url || !key) {
+      // Reuse the booth's sharing server when this console runs on the same device.
+      try {
+        const r = JSON.parse(localStorage.getItem('rpb.settings.v1') || '{}') || {};
+        url = url || r.shareUrl || '';
+        key = key || r.shareKey || '';
+      } catch (e) { /* ignore */ }
+    }
+    return { url: String(url || '').trim(), key: String(key || '') };
+  }
+  const syncReady = () => /^https:\/\/script\.google(usercontent)?\.com\//.test(syncCfg().url) && !!syncCfg().key;
+  const syncSig = () => D.bookings.concat(D.deleted).map((b) => b.id + ':' + b.updated).sort().join('|');
+  const sync = { busy: false, timer: 0, again: false, err: '' };
+  function scheduleSync() {
+    if (!S().autoSync || !syncReady() || syncSig() === D.sync.sig) return;
+    clearTimeout(sync.timer);
+    sync.timer = setTimeout(() => syncNow(false), 4000);
+  }
+  function fromSheet(x) {
+    const byName = S().packages.find((p) => p.name.toLowerCase() === String(x.pkgName || '').toLowerCase());
+    const pkg = S().packages.some((p) => p.id === x.pkg) ? x.pkg : byName ? byName.id : S().packages[0].id;
+    const status = STATUSES.includes(x.status) ? x.status : 'inquiry';
+    const b = { id: x.id, client: x.client, contact: x.contact, type: x.type || 'other', date: x.date, time: x.time, venue: x.venue,
+      pkg, hours: Number(x.hours) || pkgById(pkg).hours, travel: !!x.travel, status, notes: x.notes, created: x.created || x.updated, updated: x.updated };
+    if (x.deleted) b.deleted = true;
+    return b;
+  }
+  async function syncNow(manual) {
+    if (!syncReady()) { if (manual) toast('Add the server address and booth key first.'); return; }
+    if (sync.busy) { sync.again = true; return; }
+    sync.busy = true;
+    if (manual) toast('Syncing with Google Sheets…');
+    const { url, key } = syncCfg();
+    const out = D.bookings.concat(D.deleted).map((b) => Object.assign({}, b, { pkgName: pkgById(b.pkg).name, total: priceOf(b), downpayment: depositOf(b) }));
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 45000);
+    try {
+      let res;
+      try {
+        // text/plain keeps this a simple request, which Apps Script web apps accept cross-origin.
+        res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'bookingsSync', key, bookings: out }), signal: ctl.signal, redirect: 'follow' });
+      } catch (e) { throw new Error('No answer from the server. Check the internet connection.'); }
+      let j;
+      try { j = await res.json(); } catch (e) { throw new Error('The server address looks wrong. It should end in /exec.'); }
+      if (!j.ok) throw new Error(/unknown action/i.test(j.error || '') ? 'The server is an older version. Update Code.gs and deploy a new version.' : j.error || 'The server refused the sync.');
+      // Newer copy of each booking wins; the sheet's hand edits come back here.
+      const local = new Map(D.bookings.concat(D.deleted).map((b) => [b.id, b]));
+      let fromSheetCount = 0;
+      for (const x of j.bookings || []) {
+        if (!x.id) continue;
+        const mine = local.get(x.id);
+        if (!mine || (Number(x.updated) || 0) > (Number(mine.updated) || 0)) { local.set(x.id, fromSheet(x)); fromSheetCount++; }
+      }
+      const all = [...local.values()];
+      D.bookings = all.filter((b) => !b.deleted);
+      D.deleted = all.filter((b) => b.deleted);
+      // After taking changes from the sheet, send once more so it gets the totals worked out here.
+      D.sync = { at: Date.now(), url: j.sheetUrl || D.sync.url || '', sig: fromSheetCount ? '' : syncSig() };
+      if (fromSheetCount) sync.again = true;
+      sync.err = '';
+      try { localStorage.setItem(STORE, JSON.stringify(D)); } catch (e) { /* ignore */ }
+      if (manual || fromSheetCount) log('booking', `Synced ${D.bookings.length} booking${D.bookings.length === 1 ? '' : 's'} with Google Sheets${fromSheetCount ? ` · ${fromSheetCount} change${fromSheetCount > 1 ? 's' : ''} from the sheet` : ''}.`);
+      else renderNodes();
+      if (fromSheetCount && current) render();
+      else if (current === 'manager') render();
+    } catch (e) {
+      const msg = e.name === 'AbortError' ? 'The server took too long to answer.' : e.message;
+      if (manual || msg !== sync.err) log('manager', 'Sheet sync failed: ' + msg);
+      sync.err = msg;
+      if (manual) toast(msg);
+    } finally {
+      clearTimeout(timer);
+      sync.busy = false;
+      if (sync.again) { sync.again = false; scheduleSync(); }
+    }
+  }
+  const ago = (t) => {
+    const s = Math.round((Date.now() - t) / 1000);
+    return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : new Date(t).toLocaleDateString();
+  };
+
   /* ---------- panels ---------- */
   let current = '';
   const ui = { inquiry: { text: '', lang: '' }, editing: null, calMonth: null, mkt: { type: 'promo', platform: 'facebook', booking: '', drafts: [] } };
@@ -502,7 +593,16 @@
           <label>Price<input type="number" min="0" data-p="${i}" data-pf="price" value="${esc(p.price)}"></label><label>Includes<input data-p="${i}" data-pf="includes" value="${esc(p.includes)}"></label>
           <button class="btn small danger" data-act="delPkg" data-i="${i}"${s.packages.length < 2 ? ' disabled' : ''}>Remove</button></div>`).join('')}</div>
           <div class="row"><button class="btn" data-act="addPkg">Add package</button></div></div>
-        <div class="card"><h3>Backup</h3><p class="muted small">Bookings live on this device only. Export a backup regularly, and import it to move to another phone or tablet.</p>
+        <div class="card"><h3>Google Sheet sync</h3>
+          <p class="muted small">Keeps every booking in a "Bookings" tab of your Google spreadsheet, both ways: bookings made here appear in the sheet, and changes you type in the sheet come back here. Phones and tablets that sync to the same sheet share the same bookings. Uses the sharing server from server/Code.gs (run <b>setupBookings</b> once, then deploy a new version).</p>
+          <div class="grid3">
+            <label class="span2">Server address (ends in /exec)<input data-s="syncUrl" value="${esc(s.syncUrl)}" placeholder="${esc(syncCfg().url || 'https://script.google.com/macros/s/…/exec')}"></label>
+            <label>Booth key<input type="password" data-s="syncKey" value="${esc(s.syncKey)}" placeholder="${syncCfg().key && !s.syncKey ? 'using the booth\'s key' : ''}" autocomplete="off"></label>
+            <label class="check span3"><input type="checkbox" data-s="autoSync"${s.autoSync ? ' checked' : ''}> Sync automatically (after every change and every 2 minutes)</label>
+          </div>
+          <p class="small ${sync.err ? '' : 'muted'}" style="${sync.err ? 'color:var(--bad)' : ''}">${sync.err ? '⚠ ' + esc(sync.err) : D.sync.at ? `Last synced ${ago(D.sync.at)} · ${D.bookings.length} bookings` : syncReady() ? 'Not synced yet.' : 'Not set up.'}</p>
+          <div class="row"><button class="btn go" data-act="syncNow">Sync now</button>${D.sync.url ? `<a class="btn" href="${esc(D.sync.url)}" target="_blank" rel="noopener">Open the spreadsheet ↗</a>` : ''}</div></div>
+        <div class="card"><h3>Backup</h3><p class="muted small">Without Google Sheet sync, bookings live on this device only. A backup file also keeps your posts and settings.</p>
           <div class="row"><button class="btn" data-act="exportJson">Export backup</button><button class="btn" data-act="importJson">Import backup</button><button class="btn" data-act="exportCsv">Export bookings CSV</button>
           ${D.bookings.length ? '' : '<button class="btn amber" data-act="sample">Load sample data</button>'}<button class="btn danger" data-act="wipe">Erase everything</button></div></div>`;
     },
@@ -534,7 +634,8 @@
     set('scheduler', `<span class="ok">${open} open weekend${open === 1 ? '' : 's'}</span><span>60 days</span>`);
     set('followup', `<span class="${tk ? 'warn' : 'ok'}">${tk ? tk + ' to send' : 'all caught up'}</span>`);
     set('marketing', slots().slice(0, 3).map((t) => `<span class="ok">${fmtTime(t)}</span>`).join('') + `<span>${q} queued</span>`);
-    set('manager', `<span class="${bad ? 'warn' : 'ok'}">${bad ? bad + ' need you' : 'all checks passed'}</span>`);
+    set('manager', `<span class="${bad ? 'warn' : 'ok'}">${bad ? bad + ' need you' : 'all checks passed'}</span>` +
+      (syncReady() ? `<span class="${sync.err ? 'bad' : 'ok'}">${sync.err ? 'sheet sync failed' : D.sync.at ? 'sheet ' + ago(D.sync.at) : 'sheet not synced'}</span>` : '<span>no sheet yet</span>'));
     $('#bizName').textContent = S().business;
     $('#statusText').textContent = bad ? `${bad} thing${bad > 1 ? 's' : ''} need${bad > 1 ? '' : 's'} your attention. Open the Bot Manager.` : 'All checks passed. Bots are on duty.';
     $('#statusDot').classList.toggle('warn', !!bad);
@@ -567,7 +668,7 @@
   }
   function samples() {
     const t0 = today();
-    const mk = (n, client, type, venue, pkg, status, time, contact) => ({ id: uid(), created: Date.now() - 3 * 86400000, client, type, venue, pkg, status, time, contact, date: addDays(t0, n), hours: pkgById(pkg).hours, travel: false, notes: '' });
+    const mk = (n, client, type, venue, pkg, status, time, contact) => ({ id: uid(), created: Date.now() - 3 * 86400000, client, type, venue, pkg, status, time, contact, date: addDays(t0, n), hours: pkgById(pkg).hours, travel: false, notes: '', updated: Date.now() });
     D.bookings.push(
       mk(-5, 'Carla Reyes', 'wedding', 'Glass Garden, Pasig', 'premium', 'paid', '16:00', '0917 555 0101'),
       mk(2, 'Mark Villanueva', 'corporate', 'BGC Office, Taguig', 'standard', 'confirmed', '18:00', '0918 555 0102'),
@@ -601,6 +702,7 @@
       if (!b.date) return toast('Pick the event date.');
       if ((b.status === 'confirmed' || b.status === 'paid') && !isFree(b.date, b.id) && !confirm(`${fmtDate(b.date)} is already booked. Save anyway?`)) return;
       const isNew = !b.id;
+      touch(b);
       if (isNew) { b.id = uid(); b.created = Date.now(); D.bookings.push(b); }
       else D.bookings[D.bookings.findIndex((x) => x.id === b.id)] = b;
       ui.editing = null;
@@ -614,6 +716,7 @@
       const b = D.bookings.find((x) => x.id === id);
       if (!b || !confirm(`Delete ${b.client}'s booking on ${fmtDate(b.date)}?`)) return;
       D.bookings = D.bookings.filter((x) => x.id !== id);
+      D.deleted.push(touch(Object.assign({}, b, { deleted: true })));
       save();
       log('booking', `Deleted ${b.client}'s booking.`);
       render();
@@ -632,8 +735,8 @@
     toMarketing() { ui.mkt.type = 'dates'; ui.mkt.drafts = [0, 1, 2].map(() => caption('dates', ui.mkt.platform)); current = ''; open('marketing'); log('marketing', 'Wrote 3 "dates left" captions from the Scheduler Bot\'s open dates.'); },
     copyTask(id) { const t = tasks().find((x) => x.id === id); if (t) copy(MSG[t.kind](t.b, (ui.fuLang || S().lang) === 'tl')); },
     ack(id) { const t = tasks().find((x) => x.id === id); D.acks.push(id); save(); if (t) log('followup', `Sent "${t.label}" to ${t.b.client}.`); render(); },
-    markDone(id) { const b = D.bookings.find((x) => x.id === id); b.status = 'done'; save(); log('followup', `Closed ${b.client}'s event as done.`); render(); },
-    markPaid(id) { const b = D.bookings.find((x) => x.id === id); b.status = 'paid'; save(); log('booking', `${b.client} paid the ${money(depositOf(b))} downpayment. Date locked.`); render(); },
+    markDone(id) { const b = D.bookings.find((x) => x.id === id); b.status = 'done'; touch(b); save(); log('followup', `Closed ${b.client}'s event as done.`); render(); },
+    markPaid(id) { const b = D.bookings.find((x) => x.id === id); b.status = 'paid'; touch(b); save(); log('booking', `${b.client} paid the ${money(depositOf(b))} downpayment. Date locked.`); render(); },
     writePosts() {
       const m = ui.mkt;
       const b = m.type === 'recap' ? (D.bookings.find((x) => x.id === m.booking) || D.bookings.filter((x) => x.status === 'done').sort((a, c) => (a.date > c.date ? -1 : 1))[0]) : null;
@@ -693,6 +796,7 @@
       render();
     },
     runAll() { runAll(); },
+    syncNow() { syncNow(true); },
   };
 
   /* ---------- wiring ---------- */
@@ -723,13 +827,15 @@
       if (el.dataset.status) {
         const b = D.bookings.find((x) => x.id === el.dataset.status);
         b.status = el.value;
+        touch(b);
         save();
         log('booking', `${b.client}'s ${b.type} on ${fmtShort(b.date)} is now ${b.status}.`);
         render();
       } else if (el.dataset.s) {
-        S()[el.dataset.s] = el.type === 'number' ? Number(el.value) : el.value;
+        S()[el.dataset.s] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value.trim();
         save();
         renderNodes();
+        if (el.dataset.s === 'syncUrl' || el.dataset.s === 'syncKey' || el.dataset.s === 'autoSync') { D.sync.sig = ''; if (syncReady() && S().autoSync) syncNow(false); }
       } else if (el.dataset.p != null && el.dataset.pf) {
         const p = S().packages[Number(el.dataset.p)];
         p[el.dataset.pf] = el.type === 'number' ? Number(el.value) : el.value;
@@ -750,6 +856,8 @@
         if (!d || !Array.isArray(d.bookings)) throw new Error('bad');
         localStorage.setItem(STORE, JSON.stringify(d));
         D = load();
+        D.bookings.forEach(touch);
+        save();
         log('manager', `Imported a backup with ${D.bookings.length} bookings.`);
         render();
       } catch (err) { toast('That file is not a Booth Bots backup.'); }
@@ -764,6 +872,11 @@
     renderLog();
     render();
     if (!D.log.length) runAll();
+    const autoSync = () => { if (S().autoSync && syncReady() && document.visibilityState === 'visible') syncNow(false); };
+    autoSync();
+    setInterval(autoSync, 120000);
+    window.addEventListener('online', autoSync);
+    document.addEventListener('visibilitychange', autoSync);
   }
   init();
 })();

@@ -37,4 +37,15 @@ Bots that run the photobooth business. Click a bot on the canvas to open its pan
 | Marketing Bot | Writes Facebook, Instagram and TikTok captions from your real packages, open dates and past events. It queues them into your posting slots (12 PM, 6 PM and 8 PM by default), and "Plan my week" fills seven days. |
 | Bot Manager | Runs the checks (double bookings, missing downpayments, waiting inquiries, no posts this week, events not closed) and shows this month's bookings and open inquiries. It also holds the settings, packages and backup. |
 
-Data is stored on the device that opens the page. Use **Bot Manager → Export backup** to keep a copy or to move it to another device. The bots draft messages and posts for you to copy into Messenger or Facebook; they do not send or post anything on their own.
+Data is stored on the device that opens the page. It can also sync with a Google Sheet (see below), and **Bot Manager → Export backup** saves a copy.
+
+### Syncing bookings with a Google Sheet
+
+Bookings sync both ways with a **Bookings** tab in the spreadsheet made by the sharing server (`server/Code.gs`):
+
+1. Paste the new `server/Code.gs` into your Apps Script project and set your `BOOTH_KEY`.
+2. Run the function **setupBookings** once and approve the permissions. It creates the tab and a trigger that notices your hand edits.
+3. **Deploy → Manage deployments → Edit → Version: New version → Deploy.**
+4. In Booth Bots: **Bot Manager → Google Sheet sync**. Enter the Web app URL (ends in `/exec`) and the booth key. If the booth on the same device already uses the sharing server, its address and key are used automatically.
+
+The console syncs on open, 4 seconds after every change, and every 2 minutes. In the sheet you can edit any booking or type a new one on an empty row; it reaches the console on the next sync. Dates can be typed as `2026-12-31` or `12/31/2026`, and times as `7:00 PM`. To remove a booking from the sheet, type `yes` in the **deleted** column. If you delete the whole row, the console puts it back. When the same booking changes in both places, the most recent change wins. Phones and tablets that sync to the same sheet share one set of bookings. The bots draft messages and posts for you to copy into Messenger or Facebook; they do not send or post anything on their own.

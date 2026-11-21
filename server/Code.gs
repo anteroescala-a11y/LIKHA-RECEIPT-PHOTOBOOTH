@@ -12,6 +12,14 @@
  * 5. Copy the Web app URL (it ends in /exec) into the booth: Settings > Sharing > Server address,
  *    and type the same BOOTH_KEY into Settings > Sharing > Booth key.
  * After editing this file later: Deploy > Manage deployments > edit > Version: New version.
+ *
+ * BOOKINGS SHEET (for the Booth Bots console, bots.html)
+ * 6. Choose the function "setupBookings" and press Run once. It adds a "Bookings" tab to the
+ *    data spreadsheet and a trigger that notices when you edit a booking by hand in the sheet.
+ * 7. In Booth Bots > Bot Manager > Google Sheet sync, use the same Web app URL and BOOTH_KEY.
+ * In the sheet you can change any booking (date, status, venue, notes...) or type a new one on an
+ * empty row; the console picks it up on its next sync. To remove a booking, type "yes" in the
+ * "deleted" column (deleting the whole row would let the console send it back).
  */
 
 var BOOTH_KEY = 'CHANGE-THIS-KEY';
@@ -21,6 +29,10 @@ var MAX_EMAILS_PER_PHOTO = 5;
 
 var SESSION_HEAD = ['id', 'event', 'fileId', 'created', 'gallery', 'emails'];
 var VOUCHER_HEAD = ['code', 'status', 'created', 'usedAt'];
+var BOOKING_HEAD = ['id', 'date', 'time', 'client', 'contact', 'event', 'venue', 'package', 'hours', 'travel', 'status',
+  'total', 'downpayment', 'notes', 'created', 'updated', 'deleted', 'pkgId'];
+var BK = {};
+BOOKING_HEAD.forEach(function (h, i) { BK[h] = i; });
 
 /* ---------- storage ---------- */
 
@@ -71,6 +83,7 @@ function setup() {
   folder_();
   sheet_('Sessions', SESSION_HEAD);
   sheet_('Vouchers', VOUCHER_HEAD);
+  setupBookings();
   MailApp.getRemainingDailyQuota();
   Logger.log('Ready. Folder: ' + folder_().getUrl() + '  Data: ' + book_().getUrl());
 }
@@ -91,9 +104,136 @@ function doPost(e) {
     if (b.action === 'vouchers') return json_(queued_());
     if (b.action === 'voucherAck') return json_(ack_(b.codes || []));
     if (b.action === 'redeem') return json_(redeem_(b.code));
+    if (b.action === 'bookingsSync') return json_(bookingsSync_(b));
     return json_({ ok: false, error: 'Unknown action.' });
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message ? err.message : err) });
+  }
+}
+
+/* ---------- bookings (Booth Bots console) ---------- */
+
+/** Run once from the editor: creates the Bookings tab and the trigger for hand edits. */
+function setupBookings() {
+  bookingSheet_();
+  var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'onBookingEdit'; });
+  if (!has) ScriptApp.newTrigger('onBookingEdit').forSpreadsheet(book_()).onEdit().create();
+  Logger.log('Bookings ready: ' + book_().getUrl());
+}
+
+function bookingSheet_() {
+  var fresh = !book_().getSheetByName('Bookings');
+  var s = sheet_('Bookings', BOOKING_HEAD);
+  if (fresh) {
+    // Text columns stay exactly as typed (phone numbers keep their leading 0, dates stay yyyy-mm-dd).
+    ['A:G', 'N:N', 'R:R'].forEach(function (a) { s.getRange(a).setNumberFormat('@'); });
+    s.getRange('L:M').setNumberFormat('#,##0');
+    s.setFrozenRows(1);
+    s.getRange(1, 1, 1, BOOKING_HEAD.length).setFontWeight('bold');
+    s.hideColumns(BK.created + 1, 2);
+    s.hideColumns(BK.pkgId + 1);
+    s.hideColumns(1);
+    var rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['inquiry', 'confirmed', 'paid', 'done', 'cancelled'], true).setAllowInvalid(false).build();
+    s.getRange(2, BK.status + 1, 999, 1).setDataValidation(rule);
+  }
+  return s;
+}
+
+function pad2_(n) { return ('0' + n).slice(-2); }
+
+function normDate_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var s = String(v == null ? '' : v).trim();
+  var m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return m[3] + '-' + pad2_(m[1]) + '-' + pad2_(m[2]);
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return m[1] + '-' + pad2_(m[2]) + '-' + pad2_(m[3]);
+  return s;
+}
+
+function normTime_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'HH:mm');
+  var s = String(v == null ? '' : v).trim().toLowerCase();
+  var m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+  if (!m) return s;
+  var h = Number(m[1]) % (m[3] ? 12 : 24) + (m[3] === 'pm' ? 12 : 0);
+  return pad2_(h) + ':' + (m[2] || '00');
+}
+
+function rowToBooking_(v) {
+  return {
+    id: String(v[BK.id]), date: normDate_(v[BK.date]), time: normTime_(v[BK.time]), client: String(v[BK.client]),
+    contact: String(v[BK.contact]), type: String(v[BK.event]).toLowerCase(), venue: String(v[BK.venue]),
+    pkgName: String(v[BK.package]), pkg: String(v[BK.pkgId]), hours: Number(v[BK.hours]) || 0,
+    travel: /^(yes|true|1)$/i.test(String(v[BK.travel])), status: String(v[BK.status]).toLowerCase().trim(),
+    notes: String(v[BK.notes]), created: Number(v[BK.created]) || 0, updated: Number(v[BK.updated]) || 0,
+    deleted: /^(yes|true|1)$/i.test(String(v[BK.deleted])),
+  };
+}
+
+function bookingToRow_(b) {
+  var r = [];
+  r[BK.id] = String(b.id); r[BK.date] = String(b.date || ''); r[BK.time] = String(b.time || '');
+  r[BK.client] = String(b.client || ''); r[BK.contact] = String(b.contact || ''); r[BK.event] = String(b.type || '');
+  r[BK.venue] = String(b.venue || ''); r[BK.package] = String(b.pkgName || ''); r[BK.hours] = Number(b.hours) || '';
+  r[BK.travel] = b.travel ? 'yes' : ''; r[BK.status] = String(b.status || 'inquiry');
+  r[BK.total] = Number(b.total) || 0; r[BK.downpayment] = Number(b.downpayment) || 0; r[BK.notes] = String(b.notes || '');
+  r[BK.created] = Number(b.created) || Date.now(); r[BK.updated] = Number(b.updated) || 0;
+  r[BK.deleted] = b.deleted ? 'yes' : ''; r[BK.pkgId] = String(b.pkg || '');
+  return r;
+}
+
+/* The console sends every booking it has; the newer copy of each one wins (by "updated").
+   Returns the whole merged list, so hand edits made in the sheet travel back to the console. */
+function bookingsSync_(b) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    var s = bookingSheet_();
+    var byId = {};
+    rows_(s).forEach(function (r) { if (r.v[BK.id] !== '') byId[String(r.v[BK.id])] = r; });
+    var appends = [];
+    (b.bookings || []).slice(0, 2000).forEach(function (x) {
+      if (!x || !x.id) return;
+      var row = bookingToRow_(x);
+      var hit = byId[String(x.id)];
+      if (!hit) { appends.push(row); byId[String(x.id)] = { v: row }; return; }
+      var cur = Number(hit.v[BK.updated]) || 0;
+      if (Number(x.updated) > cur) {
+        s.getRange(hit.row, 1, 1, row.length).setValues([row]);
+        hit.v = row;
+      } else if (Number(x.updated) === cur && !hit.v[BK.deleted]) {
+        // Same version: only refresh the money columns the console works out.
+        s.getRange(hit.row, BK.total + 1, 1, 2).setValues([[row[BK.total], row[BK.downpayment]]]);
+      }
+    });
+    if (appends.length) s.getRange(s.getLastRow() + 1, 1, appends.length, BOOKING_HEAD.length).setValues(appends);
+    var out = [];
+    rows_(s).forEach(function (r) { if (r.v[BK.id] !== '') out.push(rowToBooking_(r.v)); });
+    return { ok: true, bookings: out, sheetUrl: book_().getUrl() + '#gid=' + s.getSheetId(), at: Date.now() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* Installable trigger (made by setupBookings): a hand edit stamps the row as newer, so the console
+   takes the sheet's version. A booking typed on an empty row gets an id. */
+function onBookingEdit(e) {
+  var r = e && e.range;
+  if (!r) return;
+  var s = r.getSheet();
+  if (s.getName() !== 'Bookings' || r.getLastRow() < 2) return;
+  var now = Date.now();
+  for (var i = Math.max(2, r.getRow()); i <= r.getLastRow(); i++) {
+    var v = s.getRange(i, 1, 1, BOOKING_HEAD.length).getValues()[0];
+    if (v[BK.id] === '') {
+      if (!String(v[BK.client]) && !String(v[BK.date])) continue;
+      s.getRange(i, BK.id + 1).setValue('sh' + now.toString(36) + i);
+      s.getRange(i, BK.created + 1).setValue(now);
+      if (!v[BK.status]) s.getRange(i, BK.status + 1).setValue('inquiry');
+    }
+    s.getRange(i, BK.updated + 1).setValue(now);
   }
 }
 
